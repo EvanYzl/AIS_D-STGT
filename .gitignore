@@ -159,7 +159,22 @@ Temporary Items
 .apdisk
 
 # Project specific
-data/
+# Data files (keep structure, ignore large files)
+data/**/*.csv
+data/**/*.parquet
+data/**/*.h5
+data/**/*.hdf5
+data/**/*.json
+data/**/*.pkl
+data/**/*.pickle
+data/**/large_*
+data/**/*_large.*
+# But allow small reference files and documentation
+!data/**/README.md
+!data/**/.gitkeep
+!data/**/*.pdf
+
+# Model and experiment outputs
 logs/
 experiments/
 models/
