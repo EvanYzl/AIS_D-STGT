@@ -85,9 +85,7 @@ class AISRecord(BaseModel):
     call_sign: str | None = Field(None, max_length=7, description="Radio call sign")
     vessel_type: int | None = Field(None, ge=0, le=99, description="Type of vessel")
     status: int | None = Field(None, ge=0, le=15, description="Navigation status")
-    length: float | None = Field(
-        None, ge=0.0, le=400.0, description="Length in meters"
-    )
+    length: float | None = Field(None, ge=0.0, le=400.0, description="Length in meters")
     width: float | None = Field(None, ge=0.0, le=63.0, description="Width in meters")
     draft: float | None = Field(
         None, ge=0.0, le=25.5, description="Maximum draft in meters"
