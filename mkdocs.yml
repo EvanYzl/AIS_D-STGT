@@ -1,0 +1,98 @@
+site_name: AIS D-STGT Documentation
+site_description: Deep Spatio-Temporal Graph Transformer for Maritime Vessel Trajectory Prediction
+site_author: Evan Yzl
+site_url: https://evanyzl.github.io/AIS_D-STGT/
+
+repo_name: EvanYzl/AIS_D-STGT
+repo_url: https://github.com/EvanYzl/AIS_D-STGT
+
+copyright: Copyright &copy; 2023 Evan Yzl
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.annotate
+    - content.code.copy
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - section-index
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_toc_entry: false
+            merge_init_into_class: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - Data Processing: user-guide/data-processing.md
+    - Model Training: user-guide/training.md
+    - Prediction: user-guide/prediction.md
+    - Evaluation: user-guide/evaluation.md
+  - API Reference: reference/
+  - Development:
+    - Contributing: development/contributing.md
+    - Testing: development/testing.md
+    - Release Notes: development/changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/EvanYzl/AIS_D-STGT
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/ais-dstgt/

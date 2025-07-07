@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  ais-dstgt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ais-dstgt-app
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./models:/app/models
+      - ./experiments:/app/experiments
+    environment:
+      - PYTHONPATH=/app
+      - CUDA_VISIBLE_DEVICES=0
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - ais-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ais-dstgt-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ais-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: ais-dstgt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ais_dstgt
+      POSTGRES_USER: ais_user
+      POSTGRES_PASSWORD: ais_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ais-network
+
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ais-dstgt-jupyter
+    restart: unless-stopped
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+      - ./notebooks:/app/notebooks
+    environment:
+      - PYTHONPATH=/app
+      - CUDA_VISIBLE_DEVICES=0
+    env_file:
+      - .env
+    ports:
+      - "8888:8888"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - ais-network
+
+volumes:
+  redis_data:
+  postgres_data:
+
+networks:
+  ais-network:
+    driver: bridge
