@@ -188,3 +188,92 @@ If you use this work in your research, please cite:
 - NOAA for providing AIS data access
 - The open-source community for the excellent tools and libraries
 - Maritime research community for insights and feedback
+
+## 数据预处理流水线使用指南
+
+本节介绍如何在 Linux 平台（Ubuntu 22.04+/RHEL 9+/WSL2 等）使用 `ais_dstgt.data` 提供的流水线，对原始 AIS CSV 数据进行清洗、平滑、异常检测与缓存。
+
+### 1. 环境准备
+1. 安装 Python 3.12+ 与 Poetry
+   ```bash
+   sudo apt-get update && sudo apt-get install -y python3.12 python3.12-venv build-essential
+   curl -sSL https://install.python-poetry.org | python3 -
+   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+   ```
+2. 克隆代码并安装依赖
+   ```bash
+   git clone https://github.com/EvanYzl/AIS_D-STGT.git
+   cd AIS_D-STGT
+   # 仅清洗功能
+   poetry install --without dev,docs
+   # 若需投影、卡尔曼、异常检测
+   poetry add pyproj filterpy scikit-learn pyarrow
+   ```
+
+### 2. 目录约定
+```
+AIS_D-STGT/
+├── data/
+│   ├── raw/        # 原始数据 (CSV)
+│   ├── processed/  # 清洗后数据
+│   └── external/   # 参考文档
+└── ais_dstgt/      # 代码
+```
+
+### 3. 单文件处理示例
+```python
+from ais_dstgt.data import AISDataProcessor
+
+processor = AISDataProcessor(
+    output_dir="data/processed",
+    enable_coordinate_transform=False,   # 仅清洗
+    enable_kalman_filter=False,
+    enable_anomaly_detection=False
+)
+processor.process_file(
+    "data/raw/AIS_2024_01_01.csv",
+    output_file="data/processed/AIS_2024_01_01.parquet",
+    chunk_size=500_000
+)
+```
+
+### 4. 启用高级功能
+```python
+processor = AISDataProcessor(
+    output_dir="data/processed",
+    enable_coordinate_transform=True,    # pyproj
+    enable_kalman_filter=True,           # filterpy
+    enable_anomaly_detection=True        # scikit-learn
+)
+processor.process_file("data/raw/AIS_2024_01_01.csv")
+```
+
+### 5. 多文件批处理
+```python
+processor = AISDataProcessor(output_dir="data/processed")
+processor.process_directory("data/raw", file_pattern="*.csv", combine_files=True)
+```
+
+### 6. 分区存储
+```python
+from ais_dstgt.data import AISDataProcessor, AISDataFrame
+from pathlib import Path
+
+ais_df = AISDataFrame.read_parquet("data/processed/AIS_2024_01_01.parquet")
+processor = AISDataProcessor()
+processor.create_data_partitions(
+    ais_df, partition_by="date", output_dir=Path("data/processed/partitions")
+)
+```
+
+### 7. 报告文件
+流水线会生成 `processing_report.json`，包含各步骤记录数、异常统计、过滤质量等信息，便于审计。
+
+### 8. 常见问题
+| 问题 | 解决方案 |
+| ---- | -------- |
+| ImportError: pyproj/filterpy/scikit-learn | `poetry add` 安装或在构造 `AISDataProcessor` 时禁用相关功能 |
+| MemoryError | 调小 `chunk_size`，或使用 Parquet 分区 |
+| BaseDateTime 解析失败 | 确保时间列为 ISO-8601 格式，或在 `CSVIngestionHandler` 传入 `parse_dates` 参数 |
+
+> 📌 完整示例脚本见 `examples/process_ais_data.py`，支持 CLI 一键运行。
