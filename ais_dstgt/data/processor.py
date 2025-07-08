@@ -16,6 +16,11 @@ from .preprocessing.anomaly_detector import AnomalyDetector
 from .preprocessing.coordinate_transform import CoordinateTransformer
 from .preprocessing.data_cleaner import DataCleaner
 from .preprocessing.kalman_filter import KalmanFilter
+from .preprocessing.trajectory_segmenter import TrajectorySegmenter
+from .preprocessing.scene_aggregator import SceneAggregator
+from .preprocessing.tcpa_dcpa_calculator import TCPADCPACalculator
+from .preprocessing.trajectory_smoother import EnhancedTrajectorySmootherRTS
+from .preprocessing.scene_dataset import SceneDataset, DatasetConfig
 from .schemas import AISDataFrame
 
 logger = logging.getLogger(__name__)
@@ -30,6 +35,10 @@ class AISDataProcessor:
         enable_kalman_filter: bool = True,
         enable_anomaly_detection: bool = True,
         enable_coordinate_transform: bool = True,
+        enable_trajectory_segmentation: bool = True,
+        enable_scene_aggregation: bool = True,
+        enable_enhanced_smoothing: bool = True,
+        enable_risk_assessment: bool = True,
         projection_type: str = "utm",
     ):
         """Initialize AIS data processor.
@@ -39,6 +48,10 @@ class AISDataProcessor:
             enable_kalman_filter: Whether to apply Kalman filtering
             enable_anomaly_detection: Whether to perform anomaly detection
             enable_coordinate_transform: Whether to apply coordinate transformation
+            enable_trajectory_segmentation: Whether to apply trajectory segmentation
+            enable_scene_aggregation: Whether to apply scene aggregation
+            enable_enhanced_smoothing: Whether to use enhanced trajectory smoothing
+            enable_risk_assessment: Whether to perform TCPA/DCPA risk assessment
             projection_type: Type of coordinate projection ('utm', 'mercator')
         """
         self.output_dir = Path(output_dir)
@@ -47,6 +60,10 @@ class AISDataProcessor:
         self.enable_kalman_filter = enable_kalman_filter
         self.enable_anomaly_detection = enable_anomaly_detection
         self.enable_coordinate_transform = enable_coordinate_transform
+        self.enable_trajectory_segmentation = enable_trajectory_segmentation
+        self.enable_scene_aggregation = enable_scene_aggregation
+        self.enable_enhanced_smoothing = enable_enhanced_smoothing
+        self.enable_risk_assessment = enable_risk_assessment
         self.projection_type = projection_type
 
         # Initialize components
@@ -62,6 +79,10 @@ class AISDataProcessor:
             self.enable_coordinate_transform = False
         self.kalman_filter = KalmanFilter()
         self.anomaly_detector = AnomalyDetector()
+        self.trajectory_segmenter = TrajectorySegmenter()
+        self.scene_aggregator = SceneAggregator()
+        self.tcpa_calculator = TCPADCPACalculator()
+        self.trajectory_smoother = EnhancedTrajectorySmootherRTS()
 
         # Processing report
         self.processing_report = {
@@ -144,9 +165,24 @@ class AISDataProcessor:
                 }
             )
 
-        # Step 4: Kalman filtering
-        if self.enable_kalman_filter:
-            logger.info("Step 4: Kalman filtering")
+        # Step 4: Enhanced trajectory smoothing
+        if self.enable_enhanced_smoothing:
+            logger.info("Step 4: Enhanced trajectory smoothing")
+            smoothing_results = self.trajectory_smoother.smooth_multiple_trajectories(ais_data.df)
+            
+            # Convert smoothed results back to DataFrame
+            smoothed_df = self.trajectory_smoother.export_smoothed_trajectories(smoothing_results)
+            if not smoothed_df.empty:
+                ais_data.df = smoothed_df
+            
+            smoothing_stats = self.trajectory_smoother.get_smoothing_statistics(smoothing_results)
+            self.processing_report["pipeline_steps"].append(
+                {"step": "enhanced_smoothing", "smoothing_report": smoothing_stats}
+            )
+
+        # Step 5: Kalman filtering (fallback if enhanced smoothing disabled)
+        elif self.enable_kalman_filter:
+            logger.info("Step 5: Kalman filtering")
             ais_data = self.kalman_filter.filter_trajectory(ais_data)
             filtering_report = self.kalman_filter.get_filtering_quality_report(ais_data)
 
@@ -154,17 +190,79 @@ class AISDataProcessor:
                 {"step": "kalman_filtering", "filtering_quality": filtering_report}
             )
 
-        # Step 5: Anomaly detection
+        # Step 6: Trajectory segmentation
+        if self.enable_trajectory_segmentation:
+            logger.info("Step 6: Trajectory segmentation")
+            segmentation_results = self.trajectory_segmenter.segment_multiple_trajectories(ais_data.df)
+            
+            # Extract segments and update data
+            all_segments = []
+            for mmsi, result in segmentation_results.items():
+                for segment in result.segments:
+                    segment_data = {
+                        'mmsi': mmsi,
+                        'segment_id': segment.segment_id,
+                        'segment_type': segment.segment_type.value,
+                        'start_time': segment.start_time,
+                        'end_time': segment.end_time,
+                        'duration_minutes': segment.duration.total_seconds() / 60,
+                        'points_count': len(segment.points),
+                        'avg_speed': segment.avg_speed,
+                        'max_speed': segment.max_speed,
+                        'distance_km': segment.distance_km
+                    }
+                    all_segments.append(segment_data)
+            
+            segmentation_stats = self.trajectory_segmenter.get_segmentation_statistics(segmentation_results)
+            self.processing_report["pipeline_steps"].append(
+                {"step": "trajectory_segmentation", "segmentation_report": segmentation_stats}
+            )
+
+        # Step 7: Risk assessment (TCPA/DCPA)
+        if self.enable_risk_assessment:
+            logger.info("Step 7: Risk assessment")
+            tcpa_results = self.tcpa_calculator.calculate_batch_tcpa_dcpa(ais_data.df)
+            
+            # Export results to DataFrame and add to processing report
+            if tcpa_results:
+                risk_df = self.tcpa_calculator.export_results_to_dataframe(tcpa_results)
+                risk_stats = self.tcpa_calculator.get_statistics(tcpa_results)
+            else:
+                risk_df = pd.DataFrame()
+                risk_stats = {}
+
+            self.processing_report["pipeline_steps"].append(
+                {"step": "risk_assessment", "risk_report": risk_stats}
+            )
+
+        # Step 8: Scene aggregation
+        if self.enable_scene_aggregation:
+            logger.info("Step 8: Scene aggregation")
+            scenes = self.scene_aggregator.aggregate_scenes(ais_data.df)
+            
+            # Export scenes and get statistics
+            if scenes:
+                scenes_df = self.scene_aggregator.export_scenes_to_dataframe(scenes)
+                aggregation_stats = self.scene_aggregator.get_scene_statistics(scenes)
+            else:
+                scenes_df = pd.DataFrame()
+                aggregation_stats = {}
+
+            self.processing_report["pipeline_steps"].append(
+                {"step": "scene_aggregation", "aggregation_report": aggregation_stats}
+            )
+
+        # Step 9: Anomaly detection
         if self.enable_anomaly_detection:
-            logger.info("Step 5: Anomaly detection")
+            logger.info("Step 9: Anomaly detection")
             ais_data, anomaly_report = self.anomaly_detector.detect_anomalies(ais_data)
 
             self.processing_report["pipeline_steps"].append(
                 {"step": "anomaly_detection", "anomaly_report": anomaly_report}
             )
 
-        # Step 6: Save processed data
-        logger.info("Step 6: Saving processed data")
+        # Step 10: Save processed data
+        logger.info("Step 10: Saving processed data")
         self._save_processed_data(ais_data, output_file)
 
         # Generate final report
@@ -455,3 +553,300 @@ class AISDataProcessor:
 
         logger.info(f"Created {len(partition_files)} partitions in {output_dir}")
         return partition_files
+
+    def create_scene_dataset(
+        self,
+        ais_data: AISDataFrame,
+        scene_config: dict,
+        port_locations: list[dict] | None = None,
+        waterway_definitions: list[dict] | None = None,
+    ) -> tuple[SceneDataset, dict]:
+        """Create a scene dataset for model training.
+
+        Args:
+            ais_data: Processed AIS data
+            scene_config: Scene configuration parameters
+            port_locations: Optional list of port locations
+            waterway_definitions: Optional list of waterway definitions
+
+        Returns:
+            Tuple[AISSceneDataset, Dict]: Scene dataset and aggregation report
+        """
+        logger.info("Creating scene dataset")
+
+        if not self.enable_scene_aggregation:
+            raise ValueError("Scene aggregation is disabled")
+
+        # Configure scene aggregator with additional parameters
+        if port_locations:
+            for port in port_locations:
+                self.scene_aggregator.add_port_location(
+                    name=port["name"],
+                    latitude=port["latitude"],
+                    longitude=port["longitude"],
+                    radius_km=port.get("radius_km", 5.0),
+                )
+
+        if waterway_definitions:
+            for waterway in waterway_definitions:
+                # Convert polygon coordinates if provided
+                if "polygon" in waterway:
+                    from shapely.geometry import Polygon
+
+                    polygon = Polygon(waterway["polygon"])
+                    self.scene_aggregator.add_waterway_area(
+                        name=waterway["name"],
+                        polygon=polygon,
+                        waterway_type=waterway.get("type", "channel"),
+                    )
+
+        # Generate scenes
+        scenes = self.scene_aggregator.aggregate_scenes(ais_data.df)
+
+        # Convert scenes to the format expected by SceneDataset
+        scenes_data = []
+        for scene in scenes:
+            scene_dict = {
+                'scene_id': scene.scene_id,
+                'scene_type': scene.scene_type.value,
+                'start_time': scene.start_time,
+                'end_time': scene.end_time,
+                'center_lat': scene.center_lat,
+                'center_lon': scene.center_lon,
+                'radius_km': scene.radius_km,
+                'vessels': scene.vessels,
+                'vessel_count': scene.vessel_count,
+                'duration_minutes': scene.duration.total_seconds() / 60,
+                'properties': scene.properties
+            }
+            scenes_data.append(scene_dict)
+
+        # Create dataset configuration
+        dataset_config = DatasetConfig(
+            history_length=scene_config.get('history_length', 10),
+            future_length=scene_config.get('future_length', 5),
+            time_step_seconds=scene_config.get('time_step_seconds', 60),
+            min_vessel_count=scene_config.get('min_vessel_count', 2),
+            max_vessel_count=scene_config.get('max_vessel_count', 50),
+            edge_distance_threshold=scene_config.get('edge_distance_threshold', 2000.0),
+            normalize_features=scene_config.get('normalize_features', True)
+        )
+
+        # Create dataset
+        dataset = SceneDataset(
+            scenes_data=scenes_data,
+            vessel_trajectories=ais_data.df,
+            config=dataset_config,
+            cache_dir=scene_config.get('cache_dir'),
+            precompute_features=scene_config.get('precompute_features', False)
+        )
+
+        # Metadata
+        scene_stats = self.scene_aggregator.get_scene_statistics(scenes) if scenes else {}
+        metadata = {
+            "total_scenes": len(scenes),
+            "scene_types": scene_stats.get("scene_types", {}),
+            "time_range": {
+                "start": str(ais_data.df["timestamp"].min()),
+                "end": str(ais_data.df["timestamp"].max()),
+            },
+            "unique_vessels": ais_data.df["mmsi"].nunique(),
+            "total_positions": len(ais_data.df),
+            "config": scene_config,
+            "dataset_size": len(dataset),
+            "scene_statistics": scene_stats
+        }
+
+        logger.info(f"Created scene dataset with {len(scenes)} scenes")
+        return dataset, metadata
+
+    def extract_voyage_segments(
+        self,
+        ais_data: AISDataFrame,
+        mmsi: str | None = None,
+    ) -> list[dict]:
+        """Extract voyage segments from segmented trajectory data.
+
+        Args:
+            ais_data: Segmented AIS data
+            mmsi: Specific vessel MMSI (optional)
+
+        Returns:
+            List of voyage segment dictionaries
+        """
+        if not self.enable_trajectory_segmentation:
+            raise ValueError("Trajectory segmentation is disabled")
+
+        # Get segmentation results for all vessels or specific MMSI
+        if mmsi:
+            vessel_df = ais_data.df[ais_data.df['mmsi'] == mmsi]
+            if vessel_df.empty:
+                return []
+            segmentation_result = self.trajectory_segmenter.segment_trajectory(vessel_df)
+            results = {mmsi: segmentation_result}
+        else:
+            results = self.trajectory_segmenter.segment_multiple_trajectories(ais_data.df)
+
+        # Extract voyage segments
+        voyage_segments = []
+        for vessel_mmsi, result in results.items():
+            for segment in result.segments:
+                if segment.segment_type.value in ['voyage', 'port_to_port', 'transit']:
+                    segment_dict = {
+                        'mmsi': vessel_mmsi,
+                        'segment_id': segment.segment_id,
+                        'segment_type': segment.segment_type.value,
+                        'start_time': segment.start_time,
+                        'end_time': segment.end_time,
+                        'duration_hours': segment.duration.total_seconds() / 3600,
+                        'distance_km': segment.distance_km,
+                        'avg_speed': segment.avg_speed,
+                        'max_speed': segment.max_speed,
+                        'points_count': len(segment.points),
+                        'start_location': {
+                            'latitude': segment.points[0].latitude if segment.points else None,
+                            'longitude': segment.points[0].longitude if segment.points else None
+                        },
+                        'end_location': {
+                            'latitude': segment.points[-1].latitude if segment.points else None,
+                            'longitude': segment.points[-1].longitude if segment.points else None
+                        }
+                    }
+                    voyage_segments.append(segment_dict)
+
+        return voyage_segments
+
+    def get_risk_assessment_summary(
+        self,
+        ais_data: AISDataFrame,
+    ) -> dict:
+        """Get risk assessment summary from processed data.
+
+        Args:
+            ais_data: Processed AIS data with risk information
+
+        Returns:
+            Risk assessment summary dictionary
+        """
+        if not self.enable_risk_assessment:
+            raise ValueError("Risk assessment is disabled")
+
+        # Calculate TCPA/DCPA for current data
+        tcpa_results = self.tcpa_calculator.calculate_batch_tcpa_dcpa(ais_data.df)
+        
+        if not tcpa_results:
+            return {"status": "no_risk_data", "message": "No risk encounters found"}
+
+        # Get statistics from TCPA calculator
+        risk_stats = self.tcpa_calculator.get_statistics(tcpa_results)
+        
+        # Get high-risk pairs
+        high_risk_pairs = self.tcpa_calculator.get_high_risk_pairs(tcpa_results, risk_threshold=0.7)
+        medium_risk_pairs = self.tcpa_calculator.get_high_risk_pairs(tcpa_results, risk_threshold=0.3)
+        
+        # Calculate additional summary metrics
+        summary = {
+            "status": "success",
+            "total_calculations": len(tcpa_results),
+            "high_risk_encounters": len(high_risk_pairs),
+            "medium_risk_encounters": len(medium_risk_pairs) - len(high_risk_pairs),
+            "low_risk_encounters": len(tcpa_results) - len(medium_risk_pairs),
+            "unique_vessels_involved": len(set([r.vessel_1 for r in tcpa_results] + [r.vessel_2 for r in tcpa_results])),
+            "avg_dcpa_meters": risk_stats.get('dcpa_stats', {}).get('mean', 0),
+            "min_dcpa_meters": risk_stats.get('dcpa_stats', {}).get('min', 0),
+            "avg_tcpa_seconds": risk_stats.get('tcpa_stats', {}).get('mean', 0),
+            "min_tcpa_seconds": risk_stats.get('tcpa_stats', {}).get('min', 0),
+            "avg_risk_level": risk_stats.get('risk_stats', {}).get('mean', 0),
+            "max_risk_level": risk_stats.get('risk_stats', {}).get('max', 0),
+            "detailed_statistics": risk_stats
+        }
+
+        return summary
+
+    def interpolate_trajectory_gaps(
+        self,
+        ais_data: AISDataFrame,
+        max_gap_seconds: int = 3600,
+        interpolation_interval: int = 60,
+    ) -> tuple[AISDataFrame, dict]:
+        """Interpolate gaps in vessel trajectories.
+
+        Args:
+            ais_data: Input AIS data
+            max_gap_seconds: Maximum gap to interpolate
+            interpolation_interval: Interpolation interval in seconds
+
+        Returns:
+            Tuple[AISDataFrame, Dict]: Data with interpolated gaps and report
+        """
+        if not self.enable_enhanced_smoothing:
+            raise ValueError("Enhanced smoothing is disabled")
+
+        # Process trajectories for all vessels
+        smoothing_results = self.trajectory_smoother.smooth_multiple_trajectories(ais_data.df)
+        
+        # Extract interpolation statistics
+        total_gaps_filled = sum(result.gaps_filled for result in smoothing_results.values())
+        total_outliers_removed = sum(result.outliers_removed for result in smoothing_results.values())
+        
+        # Convert smoothed results back to DataFrame
+        smoothed_df = self.trajectory_smoother.export_smoothed_trajectories(smoothing_results)
+        
+        if not smoothed_df.empty:
+            ais_data.df = smoothed_df
+        
+        # Generate report
+        interpolation_report = {
+            "vessels_processed": len(smoothing_results),
+            "total_gaps_filled": total_gaps_filled,
+            "total_outliers_removed": total_outliers_removed,
+            "original_points": sum(result.original_length for result in smoothing_results.values()),
+            "final_points": sum(result.smoothed_length for result in smoothing_results.values()),
+            "processing_time": sum(result.processing_time for result in smoothing_results.values()),
+            "avg_quality_metrics": self.trajectory_smoother.get_smoothing_statistics(smoothing_results)
+        }
+        
+        return ais_data, interpolation_report
+
+    def create_model_training_config(
+        self,
+        T_obs: int = 20,
+        T_pred: int = 30,
+        min_vessels: int = 2,
+        max_vessels: int = 50,
+        static_feature_dim: int = 10,
+        t_safe: float = 1800.0,
+        d_safe: float = 2.0,
+        alpha: float = 1.0,
+        beta: float = 1.0,
+    ) -> dict:
+        """Create configuration for model training.
+
+        Args:
+            T_obs: Number of observation time steps
+            T_pred: Number of prediction time steps
+            min_vessels: Minimum vessels per scene
+            max_vessels: Maximum vessels per scene
+            static_feature_dim: Dimension of static features
+            t_safe: Safe time threshold for TCPA
+            d_safe: Safe distance threshold for DCPA
+            alpha: DCPA weight in risk calculation
+            beta: TCPA weight in risk calculation
+
+        Returns:
+            Configuration dictionary
+        """
+        return {
+            "T_obs": T_obs,
+            "T_pred": T_pred,
+            "min_vessels": min_vessels,
+            "max_vessels": max_vessels,
+            "static_feature_dim": static_feature_dim,
+            "t_safe": t_safe,
+            "d_safe": d_safe,
+            "alpha": alpha,
+            "beta": beta,
+            "dt": 60.0,  # Default time step in seconds
+            "process_noise": 1.0,
+            "measurement_noise": 10.0,
+        }

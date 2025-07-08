@@ -1,6 +1,6 @@
-# AIS D-STGT
+# AIS Data Processing Framework (AIS-DSTGT)
 
-**Deep Spatio-Temporal Graph Transformer for Maritime Vessel Trajectory Prediction**
+**Comprehensive AIS Data Processing with Advanced Trajectory Analysis**
 
 [![CI](https://github.com/EvanYzl/AIS_D-STGT/workflows/CI/badge.svg)](https://github.com/EvanYzl/AIS_D-STGT/actions)
 [![codecov](https://codecov.io/gh/EvanYzl/AIS_D-STGT/branch/main/graph/badge.svg)](https://codecov.io/gh/EvanYzl/AIS_D-STGT)
@@ -9,16 +9,18 @@
 
 ## Overview
 
-AIS D-STGT is a deep learning framework for predicting maritime vessel trajectories using AIS (Automatic Identification System) data. The core model is based on a Deep Spatio-Temporal Graph Transformer (D-STGT) architecture that captures both spatial and temporal dependencies in vessel movement patterns.
+AIS-DSTGT is a comprehensive framework for processing and analyzing Automatic Identification System (AIS) maritime data. It provides advanced preprocessing capabilities including trajectory smoothing, behavior-based segmentation, scene aggregation, and collision risk assessment for deep learning applications in maritime domain.
 
 ## Key Features
 
-- **Advanced Architecture**: Deep Spatio-Temporal Graph Transformer with attention mechanisms
-- **Scalable Processing**: Efficient handling of large-scale AIS datasets
-- **Flexible Configuration**: Configurable model parameters and training settings
-- **Production Ready**: Docker support with GPU acceleration
-- **Comprehensive Testing**: High test coverage with automated CI/CD
-- **Rich Documentation**: Detailed API documentation and user guides
+- **Data Ingestion**: Robust CSV file handling with validation and error recovery
+- **Advanced Preprocessing**: Multi-layer data cleaning, coordinate transformation, and anomaly detection
+- **Trajectory Smoothing**: Enhanced Kalman filtering with RTS smoothing and gap interpolation
+- **Trajectory Segmentation**: Behavior-based segmentation with port visit detection and voyage partitioning
+- **Scene Aggregation**: Multi-vessel interaction analysis and navigation scene classification
+- **Risk Assessment**: TCPA/DCPA calculations for collision risk evaluation
+- **PyTorch Integration**: Custom dataset classes for efficient deep learning model training
+- **Production Ready**: Docker support with comprehensive configuration options
 
 ## Quick Start
 
@@ -39,13 +41,20 @@ pip install -e .
 ### Basic Usage
 
 ```python
-from ais_dstgt import TrajectoryPredictor
+from ais_dstgt.data.processor import AISDataProcessor
 
-# Load pretrained model
-predictor = TrajectoryPredictor.from_pretrained("path/to/model")
+# Initialize processor with configuration
+processor = AISDataProcessor()
 
-# Make predictions
-predictions = predictor.predict(ais_data)
+# Load and process AIS data
+df = processor.load_data('path/to/ais_data.csv')
+processed_data = processor.process_data(df)
+
+# Access processed components
+smoothed_trajectories = processed_data['smoothed_trajectories']
+trajectory_segments = processed_data['trajectory_segments']
+scene_analysis = processed_data['scene_analysis']
+risk_assessment = processed_data['risk_assessment']
 ```
 
 ### Docker Usage
@@ -57,6 +66,350 @@ docker-compose up -d
 # Or build manually
 docker build -t ais-dstgt .
 docker run --gpus all -p 8000:8000 ais-dstgt
+```
+
+## Architecture
+
+```
+ais_dstgt/
+├── data/
+│   ├── ingestion/           # Data loading and parsing
+│   ├── preprocessing/       # Core preprocessing modules
+│   │   ├── trajectory_segmenter.py      # Trajectory segmentation
+│   │   ├── trajectory_smoother.py       # Enhanced smoothing
+│   │   ├── scene_aggregator.py          # Scene analysis
+│   │   ├── tcpa_dcpa_calculator.py      # Risk assessment
+│   │   ├── scene_dataset.py             # PyTorch dataset
+│   │   └── ...
+│   ├── validation/          # Data quality validation
+│   └── processor.py         # Main processing pipeline
+```
+
+## Preprocessing Modules
+
+### 1. Enhanced Trajectory Smoother (`trajectory_smoother.py`)
+
+The trajectory smoother implements advanced Kalman filtering with Rauch-Tung-Striebel (RTS) smoothing for optimal trajectory estimation.
+
+**Key Features:**
+- Local coordinate projection using Transverse Mercator
+- Multi-layer outlier detection (speed, acceleration, statistical)
+- Gap interpolation using physics-based predictions
+- Quality metrics and uncertainty estimation
+
+**Code Reference:**
+```python
+# Main smoothing pipeline (lines 120-180)
+def smooth_trajectory(self, df: pd.DataFrame) -> SmoothingResult:
+    # Project to local coordinates
+    projected_data = self._project_to_local_coordinates(df_sorted)
+    
+    # Detect and remove outliers
+    cleaned_data, outliers_removed = self._detect_and_remove_outliers(projected_data)
+    
+    # Fill gaps with interpolation
+    filled_data, gaps_filled = self._fill_gaps(cleaned_data)
+    
+    # Apply Kalman filtering
+    filtered_states, filtered_covariances = self._apply_kalman_filter(filled_data)
+    
+    # Apply RTS smoothing
+    smoothed_states, smoothed_covariances = self._apply_rts_smoothing(
+        filtered_states, filtered_covariances, filled_data
+    )
+```
+
+### 2. Trajectory Segmentation (`trajectory_segmenter.py`)
+
+The trajectory segmenter provides comprehensive trajectory partitioning based on maritime behavior patterns.
+
+#### 时间划分策略 (Time Division Strategies)
+
+**1. 基于行为的分段 (Behavior-Based Segmentation)**
+- **速度变化检测**: 当速度变化超过阈值时分段轨迹
+- **航向变化检测**: 识别显著的航向变化 (>30°)
+- **时间窗口**: 可配置的分析窗口 (默认: 300秒)
+
+```python
+# 速度变化分段 (lines 180-200)
+def _detect_speed_changes(self, df: pd.DataFrame) -> List[int]:
+    speed_changes = []
+    for i in range(1, len(df)):
+        speed_change = abs(df.iloc[i]['speed'] - df.iloc[i-1]['speed'])
+        if speed_change > self.speed_change_threshold:
+            speed_changes.append(i)
+    return speed_changes
+
+# 航向变化分段 (lines 202-220)
+def _detect_course_changes(self, df: pd.DataFrame) -> List[int]:
+    course_changes = []
+    for i in range(1, len(df)):
+        course_change = self._calculate_course_change(
+            df.iloc[i-1]['course'], df.iloc[i]['course']
+        )
+        if course_change > self.course_change_threshold:
+            course_changes.append(i)
+    return course_changes
+```
+
+**2. 港口访问检测 (Port Visit Detection)**
+- **基于邻近度**: 检测船舶何时在港口边界内
+- **基于速度**: 识别表示港口活动的低速期
+- **持续时间阈值**: 最小停留时间 (默认: 1800秒)
+
+```python
+# 港口访问检测 (lines 250-290)
+def _detect_port_visits(self, df: pd.DataFrame) -> List[Dict]:
+    port_visits = []
+    
+    for port_name, port_location in self.port_locations.items():
+        # 检查与港口的邻近度
+        distances = df.apply(lambda row: geodesic(
+            (row['latitude'], row['longitude']), port_location
+        ).meters, axis=1)
+        
+        # 找到港口半径内的连续时期
+        in_port = distances <= self.port_radius
+        port_periods = self._find_continuous_periods(in_port)
+        
+        for start_idx, end_idx in port_periods:
+            duration = (df.iloc[end_idx]['timestamp'] - 
+                       df.iloc[start_idx]['timestamp']).total_seconds()
+            
+            if duration >= self.min_port_duration:
+                port_visits.append({
+                    'port_name': port_name,
+                    'start_index': start_idx,
+                    'end_index': end_idx,
+                    'duration': duration
+                })
+```
+
+**3. 航次分割 (Voyage Partitioning)**
+- **港口间段**: 在港口访问之间划分轨迹
+- **开阔海域段**: 识别连续的导航期
+- **时间间隙处理**: 基于时间不连续性的分段
+
+```python
+# 航次分割 (lines 320-360)
+def _partition_voyage(self, df: pd.DataFrame, port_visits: List[Dict]) -> List[Dict]:
+    voyage_segments = []
+    
+    # 按开始时间排序港口访问
+    port_visits.sort(key=lambda x: x['start_index'])
+    
+    # 在港口之间创建段
+    for i in range(len(port_visits) - 1):
+        current_port = port_visits[i]
+        next_port = port_visits[i + 1]
+        
+        # 从当前港口离开到下一个港口到达的航次段
+        voyage_start = current_port['end_index']
+        voyage_end = next_port['start_index']
+        
+        if voyage_end > voyage_start:
+            voyage_segments.append({
+                'type': 'voyage',
+                'start_index': voyage_start,
+                'end_index': voyage_end,
+                'origin_port': current_port['port_name'],
+                'destination_port': next_port['port_name']
+            })
+```
+
+**4. 导航状态检测 (Navigation State Detection)**
+- **锚泊**: 速度 < 0.5节 持续 > 30分钟
+- **航行**: 速度 > 3节 且航向一致
+- **操纵**: 频繁航向变化且速度可变
+- **靠泊**: 港口设施附近的极低速度
+
+```python
+# 导航状态检测 (lines 380-420)
+def _detect_navigation_states(self, df: pd.DataFrame) -> List[Dict]:
+    states = []
+    
+    for i in range(len(df)):
+        speed = df.iloc[i]['speed']
+        
+        if speed < 0.5:  # 锚泊阈值
+            # 检查低速持续时间
+            low_speed_duration = self._calculate_low_speed_duration(df, i)
+            if low_speed_duration > 1800:  # 30分钟
+                states.append({
+                    'index': i,
+                    'state': 'anchoring',
+                    'duration': low_speed_duration
+                })
+        elif speed > 3.0:  # 航行阈值
+            # 检查航向一致性
+            course_stability = self._calculate_course_stability(df, i)
+            if course_stability > 0.8:  # 高稳定性
+                states.append({
+                    'index': i,
+                    'state': 'sailing',
+                    'course_stability': course_stability
+                })
+```
+
+### 3. Scene Aggregation (`scene_aggregator.py`)
+
+场景聚合器分析多船舶交互并分类导航场景。
+
+**场景分析的时间划分:**
+- **时间窗口**: 可配置的分析窗口 (默认: 600秒)
+- **滑动窗口**: 重叠分析以进行连续监控
+- **事件驱动分段**: 基于交互事件的分段
+
+```python
+# 时间场景创建 (lines 150-200)
+def _create_temporal_scenes(self, df: pd.DataFrame) -> List[Dict]:
+    scenes = []
+    
+    # 创建滑动时间窗口
+    start_time = df['timestamp'].min()
+    end_time = df['timestamp'].max()
+    current_time = start_time
+    
+    while current_time < end_time:
+        window_end = current_time + pd.Timedelta(seconds=self.scene_window_size)
+        
+        # 获取当前时间窗口中的船舶
+        window_data = df[
+            (df['timestamp'] >= current_time) & 
+            (df['timestamp'] < window_end)
+        ]
+        
+        if len(window_data) > 0:
+            scene = self._analyze_scene(window_data, current_time)
+            scenes.append(scene)
+        
+        # 移动到下一个窗口
+        current_time += pd.Timedelta(seconds=self.scene_step_size)
+    
+    return scenes
+```
+
+### 4. TCPA/DCPA Calculator (`tcpa_dcpa_calculator.py`)
+
+使用向量化操作计算碰撞风险指标以提高效率。
+
+**时间风险评估:**
+- **预测时间跨度**: 可配置的时间范围 (默认: 1800秒)
+- **风险更新**: 在每个时间步连续计算风险
+- **动态邻接**: 基于邻近度更新船舶关系
+
+```python
+# 向量化TCPA/DCPA计算 (lines 120-160)
+def calculate_tcpa_dcpa_vectorized(self, positions: np.ndarray, 
+                                  velocities: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    多船舶对的向量化TCPA/DCPA计算
+    
+    Args:
+        positions: 形状 (n_vessels, 2) - [x, y] 位置
+        velocities: 形状 (n_vessels, 2) - [vx, vy] 速度
+    
+    Returns:
+        tcpa: 形状 (n_vessels, n_vessels) - CPA时间矩阵
+        dcpa: 形状 (n_vessels, n_vessels) - CPA距离矩阵
+    """
+    n_vessels = positions.shape[0]
+    
+    # 相对位置和速度
+    rel_pos = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
+    rel_vel = velocities[:, np.newaxis, :] - velocities[np.newaxis, :, :]
+    
+    # TCPA计算
+    rel_speed_sq = np.sum(rel_vel**2, axis=2)
+    rel_pos_dot_vel = np.sum(rel_pos * rel_vel, axis=2)
+    
+    tcpa = np.where(
+        rel_speed_sq > 1e-6,
+        -rel_pos_dot_vel / rel_speed_sq,
+        np.inf
+    )
+    
+    # DCPA计算
+    dcpa = np.sqrt(np.sum(rel_pos**2, axis=2) + 
+                   2 * tcpa * rel_pos_dot_vel + 
+                   tcpa**2 * rel_speed_sq)
+    
+    return tcpa, dcpa
+```
+
+### 5. Scene Dataset (`scene_dataset.py`)
+
+用于高效模型训练的PyTorch数据集实现。
+
+**数据组织:**
+- **时间序列**: 将数据组织成基于时间的序列
+- **特征提取**: 为模型输入提取相关特征
+- **动态批处理**: 处理可变长度序列
+
+```python
+# PyTorch数据集项获取 (lines 180-220)
+def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    scene = self.scenes[idx]
+    
+    # 提取时间特征
+    history_features = self._extract_history_features(scene)
+    future_features = self._extract_future_features(scene)
+    static_features = self._extract_static_features(scene)
+    
+    # 构建邻接矩阵
+    adjacency_matrix = self._build_adjacency_matrix(scene)
+    
+    return {
+        'history': torch.tensor(history_features, dtype=torch.float32),
+        'future': torch.tensor(future_features, dtype=torch.float32),
+        'static': torch.tensor(static_features, dtype=torch.float32),
+        'adjacency': torch.tensor(adjacency_matrix, dtype=torch.float32),
+        'scene_id': scene['scene_id']
+    }
+```
+
+## Usage Examples
+
+### Advanced Trajectory Analysis
+
+```python
+from ais_dstgt.data.preprocessing.trajectory_segmenter import TrajectorySegmenter
+
+# 配置分段参数
+segmenter = TrajectorySegmenter(
+    speed_change_threshold=2.0,  # 节
+    course_change_threshold=30.0,  # 度
+    min_segment_duration=300.0,  # 秒
+    port_radius=5000.0,  # 米
+    min_port_duration=1800.0  # 秒
+)
+
+# 分段轨迹
+segments = segmenter.segment_trajectories(df)
+
+# 分析航次模式
+voyage_analysis = segmenter.analyze_voyage_patterns(segments)
+```
+
+### Scene Analysis and Risk Assessment
+
+```python
+from ais_dstgt.data.preprocessing.scene_aggregator import SceneAggregator
+from ais_dstgt.data.preprocessing.tcpa_dcpa_calculator import TCPADCPACalculator
+
+# 初始化组件
+scene_aggregator = SceneAggregator(scene_window_size=600)
+risk_calculator = TCPADCPACalculator(prediction_horizon=1800)
+
+# 分析海事场景
+scenes = scene_aggregator.aggregate_scenes(df)
+risk_graphs = risk_calculator.calculate_risk_graphs(scenes)
+
+# 识别高风险场景
+high_risk_scenes = [
+    scene for scene in scenes 
+    if scene['risk_level'] > 0.7
+]
 ```
 
 ## Development
@@ -90,75 +443,58 @@ poetry run ruff check .
 poetry run mypy ais_dstgt
 ```
 
-### Project Structure
+## Configuration
 
-```
-AIS_D-STGT/
-├── ais_dstgt/              # Main package
-│   ├── __init__.py
-│   ├── models/             # Model implementations
-│   ├── data/               # Data processing
-│   ├── training/           # Training utilities
-│   └── utils/              # Utility functions
-├── tests/                  # Test suite
-├── docs/                   # Documentation
-├── scripts/                # Utility scripts
-├── pyproject.toml          # Poetry configuration
-├── Dockerfile              # Docker configuration
-└── docker-compose.yml      # Docker Compose configuration
-```
+The framework supports extensive configuration through parameter settings:
 
-## Code Quality Standards
+```python
+# Trajectory Smoother Configuration
+smoother_config = {
+    'process_noise_std': 1.0,
+    'observation_noise_std': 10.0,
+    'max_gap_duration': 3600.0,
+    'outlier_threshold': 3.0
+}
 
-This project follows strict code quality standards:
+# Trajectory Segmenter Configuration
+segmenter_config = {
+    'speed_change_threshold': 2.0,
+    'course_change_threshold': 30.0,
+    'min_segment_duration': 300.0,
+    'port_locations': {
+        'Port_A': (40.7128, -74.0060),
+        'Port_B': (51.5074, -0.1278)
+    }
+}
 
-- **Python 3.12** with full type annotations
-- **Black** for code formatting (line length 88)
-- **isort** for import sorting
-- **Ruff** for linting
-- **mypy** for type checking (strict mode)
-- **pytest** for testing (≥80% coverage)
-- **pre-commit** hooks for automated checks
-
-## Git Workflow
-
-- **main**: Production-ready code
-- **dev**: Development integration branch
-- **feature/**: Feature development branches
-- **hotfix/**: Bug fix branches
-
-### Commit Format
-
-```
-feat|fix|refactor|docs|test: <summary>
-
-<optional body>
-
-<optional footer>
+# Scene Aggregator Configuration
+scene_config = {
+    'scene_window_size': 600,
+    'scene_step_size': 300,
+    'interaction_distance': 10000.0,
+    'congestion_threshold': 5
+}
 ```
 
-### Example Workflow
+## Performance Metrics
 
-```bash
-# Create feature branch
-git checkout -b feature/new-model-architecture
+The framework provides comprehensive quality metrics:
 
-# Make changes and commit
-git add .
-git commit -m "feat: implement attention mechanism for D-STGT model"
+- **Trajectory Smoothing**: Position accuracy, velocity consistency, gap interpolation quality
+- **Segmentation Quality**: Segment coherence, behavior classification accuracy
+- **Scene Analysis**: Interaction detection rate, scene classification accuracy
+- **Risk Assessment**: TCPA/DCPA calculation accuracy, collision prediction performance
 
-# Push with tags
-git push --follow-tags origin feature/new-model-architecture
+## Dependencies
 
-# Create pull request to dev branch
 ```
-
-## Documentation
-
-- **[Full Documentation](https://evanyzl.github.io/AIS_D-STGT/)** - Complete user guide and API reference
-- **[Installation Guide](docs/getting-started/installation.md)** - Detailed setup instructions
-- **[API Reference](docs/reference/)** - Comprehensive API documentation
-- **[Contributing Guide](docs/development/contributing.md)** - Development guidelines
+numpy>=1.21.0
+pandas>=1.3.0
+scipy>=1.7.0
+torch>=1.9.0
+geopy>=2.2.0
+scikit-learn>=1.0.0
+```
 
 ## License
 
@@ -170,9 +506,9 @@ If you use this work in your research, please cite:
 
 ```bibtex
 @software{ais_dstgt,
-  title={AIS D-STGT: Deep Spatio-Temporal Graph Transformer for Maritime Vessel Trajectory Prediction},
+  title={AIS Data Processing Framework: Advanced Maritime Trajectory Analysis},
   author={Evan Yzl},
-  year={2023},
+  year={2024},
   url={https://github.com/EvanYzl/AIS_D-STGT}
 }
 ```
@@ -181,23 +517,12 @@ If you use this work in your research, please cite:
 
 - **Issues**: [GitHub Issues](https://github.com/EvanYzl/AIS_D-STGT/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/EvanYzl/AIS_D-STGT/discussions)
-- **Documentation**: [Project Documentation](https://evanyzl.github.io/AIS_D-STGT/)
 
 ## Acknowledgments
 
-- NOAA for providing AIS data access
-- The open-source community for the excellent tools and libraries
-- Maritime research community for insights and feedback
-
-## 数据预处理流水线使用指南
-
-本节介绍如何在 Linux 平台（Ubuntu 22.04+/RHEL 9+/WSL2 等）使用 `ais_dstgt.data` 提供的流水线，对原始 AIS CSV 数据进行清洗、平滑、异常检测与缓存。
-
-### 1. 环境准备
-1. 安装 Python 3.12+ 与 Poetry
-   ```bash
-   sudo apt-get update && sudo apt-get install -y python3.12 python3.12-venv build-essential
-   curl -sSL https://install.python-poetry.org | python3 -
+- Maritime domain expertise from research publications
+- AIS data processing methodologies from maritime safety organizations
+- Deep learning frameworks for trajectory prediction research
    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
    ```
 2. 克隆代码并安装依赖

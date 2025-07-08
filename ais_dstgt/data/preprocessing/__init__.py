@@ -18,15 +18,38 @@ The preprocessing pipeline follows these stages:
 from typing import List
 
 __all__: list[str] = [
-    "AISPreprocessor",
-    "CoordinateTransformer",
-    "KalmanFilter",
     "AnomalyDetector",
+    "CoordinateTransformer",
     "DataCleaner",
+    "KalmanFilter",
+    "TrajectorySegmenter",
+    "SegmentType",
+    "TrajectorySegment",
+    "SegmentationResult",
+    "SceneAggregator",
+    "SceneType",
+    "Scene",
+    "InteractionType",
+    "InteractionEvent",
+    "TCPADCPACalculator",
+    "VesselPosition",
+    "TCPAResult",
+    "EnhancedTrajectorySmootherRTS",
+    "SmoothedPoint",
+    "SmoothingResult",
+    "SceneDataset",
+    "SceneFeatures",
+    "DatasetConfig",
+    "collate_scene_batch",
+    "create_scene_dataloader",
 ]
 
-# from .processor import AISPreprocessor
-# from .coordinate_transform import CoordinateTransformer
-# from .kalman_filter import KalmanFilter
-# from .anomaly_detector import AnomalyDetector
-# from .data_cleaner import DataCleaner
+from .anomaly_detector import AnomalyDetector
+from .coordinate_transform import CoordinateTransformer
+from .data_cleaner import DataCleaner
+from .kalman_filter import KalmanFilter
+from .trajectory_segmenter import TrajectorySegmenter, SegmentType, TrajectorySegment, SegmentationResult
+from .scene_aggregator import SceneAggregator, SceneType, Scene, InteractionType, InteractionEvent
+from .tcpa_dcpa_calculator import TCPADCPACalculator, VesselPosition, TCPAResult
+from .trajectory_smoother import EnhancedTrajectorySmootherRTS, SmoothedPoint, SmoothingResult
+from .scene_dataset import SceneDataset, SceneFeatures, DatasetConfig, collate_scene_batch, create_scene_dataloader
