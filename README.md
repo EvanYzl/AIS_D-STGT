@@ -103,16 +103,16 @@ The trajectory smoother implements advanced Kalman filtering with Rauch-Tung-Str
 def smooth_trajectory(self, df: pd.DataFrame) -> SmoothingResult:
     # Project to local coordinates
     projected_data = self._project_to_local_coordinates(df_sorted)
-    
+
     # Detect and remove outliers
     cleaned_data, outliers_removed = self._detect_and_remove_outliers(projected_data)
-    
+
     # Fill gaps with interpolation
     filled_data, gaps_filled = self._fill_gaps(cleaned_data)
-    
+
     # Apply Kalman filtering
     filtered_states, filtered_covariances = self._apply_kalman_filter(filled_data)
-    
+
     # Apply RTS smoothing
     smoothed_states, smoothed_covariances = self._apply_rts_smoothing(
         filtered_states, filtered_covariances, filled_data
@@ -161,21 +161,21 @@ def _detect_course_changes(self, df: pd.DataFrame) -> List[int]:
 # 港口访问检测 (lines 250-290)
 def _detect_port_visits(self, df: pd.DataFrame) -> List[Dict]:
     port_visits = []
-    
+
     for port_name, port_location in self.port_locations.items():
         # 检查与港口的邻近度
         distances = df.apply(lambda row: geodesic(
             (row['latitude'], row['longitude']), port_location
         ).meters, axis=1)
-        
+
         # 找到港口半径内的连续时期
         in_port = distances <= self.port_radius
         port_periods = self._find_continuous_periods(in_port)
-        
+
         for start_idx, end_idx in port_periods:
-            duration = (df.iloc[end_idx]['timestamp'] - 
+            duration = (df.iloc[end_idx]['timestamp'] -
                        df.iloc[start_idx]['timestamp']).total_seconds()
-            
+
             if duration >= self.min_port_duration:
                 port_visits.append({
                     'port_name': port_name,
@@ -194,19 +194,19 @@ def _detect_port_visits(self, df: pd.DataFrame) -> List[Dict]:
 # 航次分割 (lines 320-360)
 def _partition_voyage(self, df: pd.DataFrame, port_visits: List[Dict]) -> List[Dict]:
     voyage_segments = []
-    
+
     # 按开始时间排序港口访问
     port_visits.sort(key=lambda x: x['start_index'])
-    
+
     # 在港口之间创建段
     for i in range(len(port_visits) - 1):
         current_port = port_visits[i]
         next_port = port_visits[i + 1]
-        
+
         # 从当前港口离开到下一个港口到达的航次段
         voyage_start = current_port['end_index']
         voyage_end = next_port['start_index']
-        
+
         if voyage_end > voyage_start:
             voyage_segments.append({
                 'type': 'voyage',
@@ -227,10 +227,10 @@ def _partition_voyage(self, df: pd.DataFrame, port_visits: List[Dict]) -> List[D
 # 导航状态检测 (lines 380-420)
 def _detect_navigation_states(self, df: pd.DataFrame) -> List[Dict]:
     states = []
-    
+
     for i in range(len(df)):
         speed = df.iloc[i]['speed']
-        
+
         if speed < 0.5:  # 锚泊阈值
             # 检查低速持续时间
             low_speed_duration = self._calculate_low_speed_duration(df, i)
@@ -264,28 +264,28 @@ def _detect_navigation_states(self, df: pd.DataFrame) -> List[Dict]:
 # 时间场景创建 (lines 150-200)
 def _create_temporal_scenes(self, df: pd.DataFrame) -> List[Dict]:
     scenes = []
-    
+
     # 创建滑动时间窗口
     start_time = df['timestamp'].min()
     end_time = df['timestamp'].max()
     current_time = start_time
-    
+
     while current_time < end_time:
         window_end = current_time + pd.Timedelta(seconds=self.scene_window_size)
-        
+
         # 获取当前时间窗口中的船舶
         window_data = df[
-            (df['timestamp'] >= current_time) & 
+            (df['timestamp'] >= current_time) &
             (df['timestamp'] < window_end)
         ]
-        
+
         if len(window_data) > 0:
             scene = self._analyze_scene(window_data, current_time)
             scenes.append(scene)
-        
+
         # 移动到下一个窗口
         current_time += pd.Timedelta(seconds=self.scene_step_size)
-    
+
     return scenes
 ```
 
@@ -300,40 +300,40 @@ def _create_temporal_scenes(self, df: pd.DataFrame) -> List[Dict]:
 
 ```python
 # 向量化TCPA/DCPA计算 (lines 120-160)
-def calculate_tcpa_dcpa_vectorized(self, positions: np.ndarray, 
+def calculate_tcpa_dcpa_vectorized(self, positions: np.ndarray,
                                   velocities: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     多船舶对的向量化TCPA/DCPA计算
-    
+
     Args:
         positions: 形状 (n_vessels, 2) - [x, y] 位置
         velocities: 形状 (n_vessels, 2) - [vx, vy] 速度
-    
+
     Returns:
         tcpa: 形状 (n_vessels, n_vessels) - CPA时间矩阵
         dcpa: 形状 (n_vessels, n_vessels) - CPA距离矩阵
     """
     n_vessels = positions.shape[0]
-    
+
     # 相对位置和速度
     rel_pos = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
     rel_vel = velocities[:, np.newaxis, :] - velocities[np.newaxis, :, :]
-    
+
     # TCPA计算
     rel_speed_sq = np.sum(rel_vel**2, axis=2)
     rel_pos_dot_vel = np.sum(rel_pos * rel_vel, axis=2)
-    
+
     tcpa = np.where(
         rel_speed_sq > 1e-6,
         -rel_pos_dot_vel / rel_speed_sq,
         np.inf
     )
-    
+
     # DCPA计算
-    dcpa = np.sqrt(np.sum(rel_pos**2, axis=2) + 
-                   2 * tcpa * rel_pos_dot_vel + 
+    dcpa = np.sqrt(np.sum(rel_pos**2, axis=2) +
+                   2 * tcpa * rel_pos_dot_vel +
                    tcpa**2 * rel_speed_sq)
-    
+
     return tcpa, dcpa
 ```
 
@@ -350,15 +350,15 @@ def calculate_tcpa_dcpa_vectorized(self, positions: np.ndarray,
 # PyTorch数据集项获取 (lines 180-220)
 def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
     scene = self.scenes[idx]
-    
+
     # 提取时间特征
     history_features = self._extract_history_features(scene)
     future_features = self._extract_future_features(scene)
     static_features = self._extract_static_features(scene)
-    
+
     # 构建邻接矩阵
     adjacency_matrix = self._build_adjacency_matrix(scene)
-    
+
     return {
         'history': torch.tensor(history_features, dtype=torch.float32),
         'future': torch.tensor(future_features, dtype=torch.float32),
@@ -407,7 +407,7 @@ risk_graphs = risk_calculator.calculate_risk_graphs(scenes)
 
 # 识别高风险场景
 high_risk_scenes = [
-    scene for scene in scenes 
+    scene for scene in scenes
     if scene['risk_level'] > 0.7
 ]
 ```

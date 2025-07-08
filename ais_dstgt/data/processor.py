@@ -16,11 +16,11 @@ from .preprocessing.anomaly_detector import AnomalyDetector
 from .preprocessing.coordinate_transform import CoordinateTransformer
 from .preprocessing.data_cleaner import DataCleaner
 from .preprocessing.kalman_filter import KalmanFilter
-from .preprocessing.trajectory_segmenter import TrajectorySegmenter
 from .preprocessing.scene_aggregator import SceneAggregator
+from .preprocessing.scene_dataset import DatasetConfig, SceneDataset
 from .preprocessing.tcpa_dcpa_calculator import TCPADCPACalculator
+from .preprocessing.trajectory_segmenter import TrajectorySegmenter
 from .preprocessing.trajectory_smoother import EnhancedTrajectorySmootherRTS
-from .preprocessing.scene_dataset import SceneDataset, DatasetConfig
 from .schemas import AISDataFrame
 
 logger = logging.getLogger(__name__)
@@ -168,14 +168,20 @@ class AISDataProcessor:
         # Step 4: Enhanced trajectory smoothing
         if self.enable_enhanced_smoothing:
             logger.info("Step 4: Enhanced trajectory smoothing")
-            smoothing_results = self.trajectory_smoother.smooth_multiple_trajectories(ais_data.df)
-            
+            smoothing_results = self.trajectory_smoother.smooth_multiple_trajectories(
+                ais_data.df
+            )
+
             # Convert smoothed results back to DataFrame
-            smoothed_df = self.trajectory_smoother.export_smoothed_trajectories(smoothing_results)
+            smoothed_df = self.trajectory_smoother.export_smoothed_trajectories(
+                smoothing_results
+            )
             if not smoothed_df.empty:
                 ais_data.df = smoothed_df
-            
-            smoothing_stats = self.trajectory_smoother.get_smoothing_statistics(smoothing_results)
+
+            smoothing_stats = self.trajectory_smoother.get_smoothing_statistics(
+                smoothing_results
+            )
             self.processing_report["pipeline_steps"].append(
                 {"step": "enhanced_smoothing", "smoothing_report": smoothing_stats}
             )
@@ -193,42 +199,49 @@ class AISDataProcessor:
         # Step 6: Trajectory segmentation
         if self.enable_trajectory_segmentation:
             logger.info("Step 6: Trajectory segmentation")
-            segmentation_results = self.trajectory_segmenter.segment_multiple_trajectories(ais_data.df)
-            
+            segmentation_results = (
+                self.trajectory_segmenter.segment_multiple_trajectories(ais_data.df)
+            )
+
             # Extract segments and update data
             all_segments = []
             for mmsi, result in segmentation_results.items():
                 for segment in result.segments:
                     segment_data = {
-                        'mmsi': mmsi,
-                        'segment_id': segment.segment_id,
-                        'segment_type': segment.segment_type.value,
-                        'start_time': segment.start_time,
-                        'end_time': segment.end_time,
-                        'duration_minutes': segment.duration.total_seconds() / 60,
-                        'points_count': len(segment.points),
-                        'avg_speed': segment.avg_speed,
-                        'max_speed': segment.max_speed,
-                        'distance_km': segment.distance_km
+                        "mmsi": mmsi,
+                        "segment_id": segment.segment_id,
+                        "segment_type": segment.segment_type.value,
+                        "start_time": segment.start_time,
+                        "end_time": segment.end_time,
+                        "duration_minutes": segment.duration.total_seconds() / 60,
+                        "points_count": len(segment.points),
+                        "avg_speed": segment.avg_speed,
+                        "max_speed": segment.max_speed,
+                        "distance_km": segment.distance_km,
                     }
                     all_segments.append(segment_data)
-            
-            segmentation_stats = self.trajectory_segmenter.get_segmentation_statistics(segmentation_results)
+
+            segmentation_stats = self.trajectory_segmenter.get_segmentation_statistics(
+                segmentation_results
+            )
             self.processing_report["pipeline_steps"].append(
-                {"step": "trajectory_segmentation", "segmentation_report": segmentation_stats}
+                {
+                    "step": "trajectory_segmentation",
+                    "segmentation_report": segmentation_stats,
+                }
             )
 
         # Step 7: Risk assessment (TCPA/DCPA)
         if self.enable_risk_assessment:
             logger.info("Step 7: Risk assessment")
             tcpa_results = self.tcpa_calculator.calculate_batch_tcpa_dcpa(ais_data.df)
-            
+
             # Export results to DataFrame and add to processing report
             if tcpa_results:
-                risk_df = self.tcpa_calculator.export_results_to_dataframe(tcpa_results)
+                self.tcpa_calculator.export_results_to_dataframe(tcpa_results)
                 risk_stats = self.tcpa_calculator.get_statistics(tcpa_results)
             else:
-                risk_df = pd.DataFrame()
+                pd.DataFrame()
                 risk_stats = {}
 
             self.processing_report["pipeline_steps"].append(
@@ -239,13 +252,13 @@ class AISDataProcessor:
         if self.enable_scene_aggregation:
             logger.info("Step 8: Scene aggregation")
             scenes = self.scene_aggregator.aggregate_scenes(ais_data.df)
-            
+
             # Export scenes and get statistics
             if scenes:
-                scenes_df = self.scene_aggregator.export_scenes_to_dataframe(scenes)
+                self.scene_aggregator.export_scenes_to_dataframe(scenes)
                 aggregation_stats = self.scene_aggregator.get_scene_statistics(scenes)
             else:
-                scenes_df = pd.DataFrame()
+                pd.DataFrame()
                 aggregation_stats = {}
 
             self.processing_report["pipeline_steps"].append(
@@ -607,29 +620,29 @@ class AISDataProcessor:
         scenes_data = []
         for scene in scenes:
             scene_dict = {
-                'scene_id': scene.scene_id,
-                'scene_type': scene.scene_type.value,
-                'start_time': scene.start_time,
-                'end_time': scene.end_time,
-                'center_lat': scene.center_lat,
-                'center_lon': scene.center_lon,
-                'radius_km': scene.radius_km,
-                'vessels': scene.vessels,
-                'vessel_count': scene.vessel_count,
-                'duration_minutes': scene.duration.total_seconds() / 60,
-                'properties': scene.properties
+                "scene_id": scene.scene_id,
+                "scene_type": scene.scene_type.value,
+                "start_time": scene.start_time,
+                "end_time": scene.end_time,
+                "center_lat": scene.center_lat,
+                "center_lon": scene.center_lon,
+                "radius_km": scene.radius_km,
+                "vessels": scene.vessels,
+                "vessel_count": scene.vessel_count,
+                "duration_minutes": scene.duration.total_seconds() / 60,
+                "properties": scene.properties,
             }
             scenes_data.append(scene_dict)
 
         # Create dataset configuration
         dataset_config = DatasetConfig(
-            history_length=scene_config.get('history_length', 10),
-            future_length=scene_config.get('future_length', 5),
-            time_step_seconds=scene_config.get('time_step_seconds', 60),
-            min_vessel_count=scene_config.get('min_vessel_count', 2),
-            max_vessel_count=scene_config.get('max_vessel_count', 50),
-            edge_distance_threshold=scene_config.get('edge_distance_threshold', 2000.0),
-            normalize_features=scene_config.get('normalize_features', True)
+            history_length=scene_config.get("history_length", 10),
+            future_length=scene_config.get("future_length", 5),
+            time_step_seconds=scene_config.get("time_step_seconds", 60),
+            min_vessel_count=scene_config.get("min_vessel_count", 2),
+            max_vessel_count=scene_config.get("max_vessel_count", 50),
+            edge_distance_threshold=scene_config.get("edge_distance_threshold", 2000.0),
+            normalize_features=scene_config.get("normalize_features", True),
         )
 
         # Create dataset
@@ -637,12 +650,14 @@ class AISDataProcessor:
             scenes_data=scenes_data,
             vessel_trajectories=ais_data.df,
             config=dataset_config,
-            cache_dir=scene_config.get('cache_dir'),
-            precompute_features=scene_config.get('precompute_features', False)
+            cache_dir=scene_config.get("cache_dir"),
+            precompute_features=scene_config.get("precompute_features", False),
         )
 
         # Metadata
-        scene_stats = self.scene_aggregator.get_scene_statistics(scenes) if scenes else {}
+        scene_stats = (
+            self.scene_aggregator.get_scene_statistics(scenes) if scenes else {}
+        )
         metadata = {
             "total_scenes": len(scenes),
             "scene_types": scene_stats.get("scene_types", {}),
@@ -654,7 +669,7 @@ class AISDataProcessor:
             "total_positions": len(ais_data.df),
             "config": scene_config,
             "dataset_size": len(dataset),
-            "scene_statistics": scene_stats
+            "scene_statistics": scene_stats,
         }
 
         logger.info(f"Created scene dataset with {len(scenes)} scenes")
@@ -679,38 +694,50 @@ class AISDataProcessor:
 
         # Get segmentation results for all vessels or specific MMSI
         if mmsi:
-            vessel_df = ais_data.df[ais_data.df['mmsi'] == mmsi]
+            vessel_df = ais_data.df[ais_data.df["mmsi"] == mmsi]
             if vessel_df.empty:
                 return []
-            segmentation_result = self.trajectory_segmenter.segment_trajectory(vessel_df)
+            segmentation_result = self.trajectory_segmenter.segment_trajectory(
+                vessel_df
+            )
             results = {mmsi: segmentation_result}
         else:
-            results = self.trajectory_segmenter.segment_multiple_trajectories(ais_data.df)
+            results = self.trajectory_segmenter.segment_multiple_trajectories(
+                ais_data.df
+            )
 
         # Extract voyage segments
         voyage_segments = []
         for vessel_mmsi, result in results.items():
             for segment in result.segments:
-                if segment.segment_type.value in ['voyage', 'port_to_port', 'transit']:
+                if segment.segment_type.value in ["voyage", "port_to_port", "transit"]:
                     segment_dict = {
-                        'mmsi': vessel_mmsi,
-                        'segment_id': segment.segment_id,
-                        'segment_type': segment.segment_type.value,
-                        'start_time': segment.start_time,
-                        'end_time': segment.end_time,
-                        'duration_hours': segment.duration.total_seconds() / 3600,
-                        'distance_km': segment.distance_km,
-                        'avg_speed': segment.avg_speed,
-                        'max_speed': segment.max_speed,
-                        'points_count': len(segment.points),
-                        'start_location': {
-                            'latitude': segment.points[0].latitude if segment.points else None,
-                            'longitude': segment.points[0].longitude if segment.points else None
+                        "mmsi": vessel_mmsi,
+                        "segment_id": segment.segment_id,
+                        "segment_type": segment.segment_type.value,
+                        "start_time": segment.start_time,
+                        "end_time": segment.end_time,
+                        "duration_hours": segment.duration.total_seconds() / 3600,
+                        "distance_km": segment.distance_km,
+                        "avg_speed": segment.avg_speed,
+                        "max_speed": segment.max_speed,
+                        "points_count": len(segment.points),
+                        "start_location": {
+                            "latitude": segment.points[0].latitude
+                            if segment.points
+                            else None,
+                            "longitude": segment.points[0].longitude
+                            if segment.points
+                            else None,
                         },
-                        'end_location': {
-                            'latitude': segment.points[-1].latitude if segment.points else None,
-                            'longitude': segment.points[-1].longitude if segment.points else None
-                        }
+                        "end_location": {
+                            "latitude": segment.points[-1].latitude
+                            if segment.points
+                            else None,
+                            "longitude": segment.points[-1].longitude
+                            if segment.points
+                            else None,
+                        },
                     }
                     voyage_segments.append(segment_dict)
 
@@ -733,17 +760,21 @@ class AISDataProcessor:
 
         # Calculate TCPA/DCPA for current data
         tcpa_results = self.tcpa_calculator.calculate_batch_tcpa_dcpa(ais_data.df)
-        
+
         if not tcpa_results:
             return {"status": "no_risk_data", "message": "No risk encounters found"}
 
         # Get statistics from TCPA calculator
         risk_stats = self.tcpa_calculator.get_statistics(tcpa_results)
-        
+
         # Get high-risk pairs
-        high_risk_pairs = self.tcpa_calculator.get_high_risk_pairs(tcpa_results, risk_threshold=0.7)
-        medium_risk_pairs = self.tcpa_calculator.get_high_risk_pairs(tcpa_results, risk_threshold=0.3)
-        
+        high_risk_pairs = self.tcpa_calculator.get_high_risk_pairs(
+            tcpa_results, risk_threshold=0.7
+        )
+        medium_risk_pairs = self.tcpa_calculator.get_high_risk_pairs(
+            tcpa_results, risk_threshold=0.3
+        )
+
         # Calculate additional summary metrics
         summary = {
             "status": "success",
@@ -751,14 +782,19 @@ class AISDataProcessor:
             "high_risk_encounters": len(high_risk_pairs),
             "medium_risk_encounters": len(medium_risk_pairs) - len(high_risk_pairs),
             "low_risk_encounters": len(tcpa_results) - len(medium_risk_pairs),
-            "unique_vessels_involved": len(set([r.vessel_1 for r in tcpa_results] + [r.vessel_2 for r in tcpa_results])),
-            "avg_dcpa_meters": risk_stats.get('dcpa_stats', {}).get('mean', 0),
-            "min_dcpa_meters": risk_stats.get('dcpa_stats', {}).get('min', 0),
-            "avg_tcpa_seconds": risk_stats.get('tcpa_stats', {}).get('mean', 0),
-            "min_tcpa_seconds": risk_stats.get('tcpa_stats', {}).get('min', 0),
-            "avg_risk_level": risk_stats.get('risk_stats', {}).get('mean', 0),
-            "max_risk_level": risk_stats.get('risk_stats', {}).get('max', 0),
-            "detailed_statistics": risk_stats
+            "unique_vessels_involved": len(
+                set(
+                    [r.vessel_1 for r in tcpa_results]
+                    + [r.vessel_2 for r in tcpa_results]
+                )
+            ),
+            "avg_dcpa_meters": risk_stats.get("dcpa_stats", {}).get("mean", 0),
+            "min_dcpa_meters": risk_stats.get("dcpa_stats", {}).get("min", 0),
+            "avg_tcpa_seconds": risk_stats.get("tcpa_stats", {}).get("mean", 0),
+            "min_tcpa_seconds": risk_stats.get("tcpa_stats", {}).get("min", 0),
+            "avg_risk_level": risk_stats.get("risk_stats", {}).get("mean", 0),
+            "max_risk_level": risk_stats.get("risk_stats", {}).get("max", 0),
+            "detailed_statistics": risk_stats,
         }
 
         return summary
@@ -783,29 +819,45 @@ class AISDataProcessor:
             raise ValueError("Enhanced smoothing is disabled")
 
         # Process trajectories for all vessels
-        smoothing_results = self.trajectory_smoother.smooth_multiple_trajectories(ais_data.df)
-        
+        smoothing_results = self.trajectory_smoother.smooth_multiple_trajectories(
+            ais_data.df
+        )
+
         # Extract interpolation statistics
-        total_gaps_filled = sum(result.gaps_filled for result in smoothing_results.values())
-        total_outliers_removed = sum(result.outliers_removed for result in smoothing_results.values())
-        
+        total_gaps_filled = sum(
+            result.gaps_filled for result in smoothing_results.values()
+        )
+        total_outliers_removed = sum(
+            result.outliers_removed for result in smoothing_results.values()
+        )
+
         # Convert smoothed results back to DataFrame
-        smoothed_df = self.trajectory_smoother.export_smoothed_trajectories(smoothing_results)
-        
+        smoothed_df = self.trajectory_smoother.export_smoothed_trajectories(
+            smoothing_results
+        )
+
         if not smoothed_df.empty:
             ais_data.df = smoothed_df
-        
+
         # Generate report
         interpolation_report = {
             "vessels_processed": len(smoothing_results),
             "total_gaps_filled": total_gaps_filled,
             "total_outliers_removed": total_outliers_removed,
-            "original_points": sum(result.original_length for result in smoothing_results.values()),
-            "final_points": sum(result.smoothed_length for result in smoothing_results.values()),
-            "processing_time": sum(result.processing_time for result in smoothing_results.values()),
-            "avg_quality_metrics": self.trajectory_smoother.get_smoothing_statistics(smoothing_results)
+            "original_points": sum(
+                result.original_length for result in smoothing_results.values()
+            ),
+            "final_points": sum(
+                result.smoothed_length for result in smoothing_results.values()
+            ),
+            "processing_time": sum(
+                result.processing_time for result in smoothing_results.values()
+            ),
+            "avg_quality_metrics": self.trajectory_smoother.get_smoothing_statistics(
+                smoothing_results
+            ),
         }
-        
+
         return ais_data, interpolation_report
 
     def create_model_training_config(
