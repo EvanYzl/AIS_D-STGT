@@ -634,14 +634,14 @@ class AISDataProcessor:
             }
             scenes_data.append(scene_dict)
 
-        # Create dataset configuration
+        # Create dataset configuration with research-optimized defaults
         dataset_config = DatasetConfig(
-            history_length=scene_config.get("history_length", 10),
-            future_length=scene_config.get("future_length", 5),
-            time_step_seconds=scene_config.get("time_step_seconds", 60),
-            min_vessel_count=scene_config.get("min_vessel_count", 2),
-            max_vessel_count=scene_config.get("max_vessel_count", 50),
-            edge_distance_threshold=scene_config.get("edge_distance_threshold", 2000.0),
+            history_length=scene_config.get("history_length", 20),  # 20分钟历史轨迹
+            future_length=scene_config.get("future_length", 10),    # 10分钟预测窗口
+            time_step_seconds=scene_config.get("time_step_seconds", 60),  # 60秒时间步
+            min_vessel_count=scene_config.get("min_vessel_count", 2),     # 最小船舶数
+            max_vessel_count=scene_config.get("max_vessel_count", 50),    # 最大船舶数
+            edge_distance_threshold=scene_config.get("edge_distance_threshold", 2000.0),  # 2km交互距离
             normalize_features=scene_config.get("normalize_features", True),
         )
 

@@ -54,25 +54,25 @@ class SceneFeatures:
 class DatasetConfig:
     """Configuration for scene dataset"""
 
-    # Feature extraction
-    history_length: int = 10  # Number of historical time steps
-    future_length: int = 5  # Number of future time steps
-    time_step_seconds: int = 60  # Time step interval
+    # Feature extraction - 基于科研需求优化的时间窗口参数
+    history_length: int = 20  # 历史时间步数，20分钟历史轨迹，覆盖两轮避碰决策
+    future_length: int = 10  # 未来时间步数，10分钟预测窗口，符合预测文献标准
+    time_step_seconds: int = 60  # 时间步长，60秒间隔与AIS采样频率对齐
 
     # Node features
     node_feature_names: list[str] = None
     normalize_features: bool = True
 
-    # Edge features
-    edge_distance_threshold: float = 2000.0  # meters
+    # Edge features - 基于COLREGS规则的交互距离
+    edge_distance_threshold: float = 2000.0  # 边连接距离阈值（米），约1海里
     include_edge_features: bool = True
 
     # Graph features
     include_graph_features: bool = True
 
-    # Data processing
-    min_vessel_count: int = 2
-    max_vessel_count: int = 50
+    # Data processing - 场景规模控制
+    min_vessel_count: int = 2  # 最小船舶数，满足交互场景定义
+    max_vessel_count: int = 50  # 最大船舶数，平衡显存与场景完整性
     filter_scene_types: list[str] | None = None
 
     def __post_init__(self):

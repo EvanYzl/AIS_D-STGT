@@ -123,14 +123,15 @@ class SceneAggregator:
 
     def __init__(
         self,
-        scene_radius_km: float = 10.0,
-        min_scene_duration_minutes: float = 10.0,
-        max_scene_duration_minutes: float = 120.0,
-        min_vessels_per_scene: int = 2,
-        congestion_density_threshold: float = 5.0,  # vessels per km²
-        interaction_distance_threshold: float = 2.0,  # km
-        port_approach_distance_km: float = 15.0,
-        speed_threshold_knots: float = 1.0,
+        scene_radius_km: float = 7.0,  # 主航道场景半径，参考VHF覆盖范围
+        min_scene_duration_minutes: float = 10.0,  # 最小场景持续时间
+        max_scene_duration_minutes: float = 90.0,  # 最大场景持续时间，避免过长场景
+        min_vessels_per_scene: int = 2,  # 最小船舶数量，满足交互场景定义
+        congestion_density_threshold: float = 4.0,  # 拥堵密度阈值，参考主要港口数据
+        interaction_distance_threshold: float = 1.852,  # 交互距离阈值（1海里），符合COLREGS
+        port_approach_distance_km: float = 12.0,  # 港口接近距离，覆盖典型港口水域
+        speed_threshold_knots: float = 0.8,  # 静止判别阈值，区分锚泊与航行
+        time_window_minutes: float = 5.0,  # 时间窗口大小，平衡实时性与稳定性
     ):
         self.scene_radius_km = scene_radius_km
         self.min_scene_duration = timedelta(minutes=min_scene_duration_minutes)
@@ -140,6 +141,7 @@ class SceneAggregator:
         self.interaction_distance_threshold = interaction_distance_threshold
         self.port_approach_distance_km = port_approach_distance_km
         self.speed_threshold_knots = speed_threshold_knots
+        self.time_window_minutes = time_window_minutes
 
         # Initialize waterway areas
         self.waterway_areas = self._initialize_default_waterways()
@@ -297,8 +299,8 @@ class SceneAggregator:
         """Group vessel states into time windows"""
         time_windows = defaultdict(list)
 
-        # Use 5-minute time windows
-        window_size = timedelta(minutes=5)
+        # Use configurable time windows for scene aggregation
+        window_size = timedelta(minutes=self.time_window_minutes)
 
         for state in vessel_states:
             # Round timestamp to nearest window
